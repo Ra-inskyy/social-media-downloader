@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaveMedia - Downloader TikTok, YouTube, Facebook, Instagram & Spotify</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Floating Background Elements -->
+    <div class="floating-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+        <div class="shape shape-4"></div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1>SaveMedia 🎉</h1>
+                    <p class="subtitle">Download video & audio dengan mudah!</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Platform Tabs -->
+        <div class="platform-tabs">
+            <button class="tab active" data-platform="all">
+                <span class="tab-icon">🚀</span>
+                <span>Semua</span>
+            </button>
+            <button class="tab" data-platform="youtube">
+                <span class="tab-icon">▶️</span>
+                <span>YouTube</span>
+            </button>
+            <button class="tab" data-platform="tiktok">
+                <span class="tab-icon">🎵</span>
+                <span>TikTok</span>
+            </button>
+            <button class="tab" data-platform="facebook">
+                <span class="tab-icon">📘</span>
+                <span>Facebook</span>
+            </button>
+            <button class="tab" data-platform="instagram">
+                <span class="tab-icon">📸</span>
+                <span>Instagram</span>
+            </button>
+            <button class="tab" data-platform="spotify">
+                <span class="tab-icon">🎧</span>
+                <span>Spotify</span>
+            </button>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Input Card -->
+            <div class="input-card">
+                <div class="input-group">
+                    <div class="input-wrapper">
+                        <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                        <input type="url" id="videoUrl" placeholder="Paste link video di sini... 🔗" autocomplete="off">
+                        <button id="pasteBtn" class="paste-btn" title="Paste dari clipboard">
+                            📋
+                        </button>
+                    </div>
+                    <button id="downloadBtn" class="download-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        <span>Download Sekarang! 💾</span>
+                    </button>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loading" class="loading hidden">
+                    <div class="spinner"></div>
+                    <span>Sedang memproses video... ⏳</span>
+                </div>
+
+                <!-- Download Loading State -->
+                <div id="downloadLoading" class="loading hidden">
+                    <div class="spinner"></div>
+                    <span id="downloadLoadingText">Sedang mendownload... ⏳</span>
+                </div>
+
+                <!-- Error State -->
+                <div id="error" class="error-message hidden">
+                    <span>⚠️</span>
+                    <span id="errorText"></span>
+                </div>
+
+                <!-- Result Card -->
+                <div id="result" class="result-card hidden">
+                    <div class="video-info">
+                        <div class="thumbnail-wrapper">
+                            <img id="thumbnail" src="" alt="Video thumbnail">
+                            <div class="platform-badge" id="platformBadge"></div>
+                        </div>
+                        <div class="video-details">
+                            <h3 id="videoTitle">Video Title</h3>
+                            <p id="videoAuthor" class="video-author"></p>
+                            <div class="video-meta">
+                                <span id="videoDuration" class="meta-tag"></span>
+                                <span id="videoPlatform" class="meta-tag"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="format-section">
+                        <h4>Pilih format yang kamu suka:</h4>
+                        <div id="formatList" class="format-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Tips -->
+            <div class="quick-tips">
+                <div class="tip-card">
+                    <span class="tip-icon">💡</span>
+                    <h4>TikTok</h4>
+                    <p>Video bisa didownload tanpa watermark! ✨</p>
+                </div>
+                <div class="tip-card">
+                    <span class="tip-icon">🎥</span>
+                    <h4>YouTube</h4>
+                    <p>Download HD sampai 4K & audio MP3 🎵</p>
+                </div>
+                <div class="tip-card">
+                    <span class="tip-icon">📸</span>
+                    <h4>Instagram</h4>
+                    <p>Download Reels & video publik 📹</p>
+                </div>
+                <div class="tip-card">
+                    <span class="tip-icon">🎧</span>
+                    <h4>Spotify</h4>
+                    <p>Download lagu, album & playlist sebagai MP3 🎶</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- How to Use -->
+        <section class="how-to">
+            <h2> Cara pakai SaveMedia 📖</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h4>Copy Link</h4>
+                    <p>Salin link video dari TikTok, YouTube, Facebook, Instagram, atau Spotify</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h4>Paste & Download</h4>
+                    <p>Tempel di kolom di atas, pilih format, dan klik download!</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h4>Simpan</h4>
+                    <p>File akan otomatis download ke perangkat kamu 💾</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="features">
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3>Super Cepat</h3>
+                <p>Download dalam hitungan detik, gak perlu nunggu lama! ⏱️</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>Aman & Privat</h3>
+                <p> kami tidak menyimpan data apapun. Privacy terjaga 100%! ✅</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💎</div>
+                <h3>Kualitas HD</h3>
+                <p>Download video kualitas terbaik yang tersedia 🎯</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🌍</div>
+                <h3>Multi Platform</h3>
+                <p>Dukungan TikTok, YouTube, Facebook, Instagram & Spotify 📲</p>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>✨ SaveMedia - Aplikasi downloader favorit kamu! ✨</p>
+                <p class="disclaimer">Harap hormati hak cipta konten kreator. Download hanya untuk penggunaan pribadi ya! 🙏</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
