@@ -1,0 +1,4 @@
+# Python dependencies for Social Media Downloader project
+yt-dlp
+spotdl
+requests
