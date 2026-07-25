@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const ytdl = require('ytdl-core');
 const axios = require('axios');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const archiver = require('archiver');
@@ -31,50 +31,61 @@ function getInstagramShortcode(url) {
   return match ? match[1] : null;
 }
 
+// Helper: clean Spotify URL
+function cleanSpotifyUrl(url) {
+  if (!url) return url;
+  let cleaned = url.replace(/\/intl-[a-z]{2}\//i, '/');
+  cleaned = cleaned.split('?')[0];
+  return cleaned;
+}
+
 // Helper: check if ffmpeg is available
 function hasFfmpeg() {
-  return new Promise((resolve) => {
-    const proc = spawn('ffmpeg', ['-version']);
-    proc.on('error', () => resolve(false));
-    proc.on('close', (code) => resolve(code === 0));
-  });
+  try {
+    execSync('ffmpeg -version', { stdio: 'ignore' });
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 // Helper: check if yt-dlp is available (best YouTube downloader)
 function hasYtDlp() {
-  return new Promise((resolve) => {
-    // First try 'yt-dlp' command directly
-    const proc1 = spawn('yt-dlp', ['--version']);
-    proc1.on('error', () => {
-      // If not found, try python3 -m yt_dlp or python -m yt_dlp
-      const proc2 = spawn('python3', ['-m', 'yt_dlp', '--version']);
-      proc2.on('error', () => {
-        const proc3 = spawn('python', ['-m', 'yt_dlp', '--version']);
-        proc3.on('error', () => resolve(false));
-        proc3.on('close', (code) => resolve(code === 0));
-      });
-      proc2.on('close', (code) => resolve(code === 0));
-    });
-    proc1.on('close', (code) => resolve(code === 0));
-  });
+  try {
+    execSync('yt-dlp --version', { stdio: 'ignore' });
+    return true;
+  } catch (e) {}
+  try {
+    execSync('python3 -m yt_dlp --version', { stdio: 'ignore' });
+    return true;
+  } catch (e) {}
+  try {
+    execSync('python -m yt_dlp --version', { stdio: 'ignore' });
+    return true;
+  } catch (e) {}
+  return false;
+}
+
+// Helper: get spotdl executable command
+function getSpotdlExecutable() {
+  try {
+    execSync('spotdl --version', { stdio: 'ignore' });
+    return { cmd: 'spotdl', prefix: [] };
+  } catch (e) {}
+  try {
+    execSync('python3 -m spotdl --version', { stdio: 'ignore' });
+    return { cmd: 'python3', prefix: ['-m', 'spotdl'] };
+  } catch (e) {}
+  try {
+    execSync('python -m spotdl --version', { stdio: 'ignore' });
+    return { cmd: 'python', prefix: ['-m', 'spotdl'] };
+  } catch (e) {}
+  return null;
 }
 
 // Helper: check if spotdl is available
 function hasSpotdl() {
-  return new Promise((resolve) => {
-    const proc = spawn('spotdl', ['--version']);
-    proc.on('error', () => {
-      // Fallback: try python3 -m spotdl or python -m spotdl
-      const proc2 = spawn('python3', ['-m', 'spotdl', '--version']);
-      proc2.on('error', () => {
-        const proc3 = spawn('python', ['-m', 'spotdl', '--version']);
-        proc3.on('error', () => resolve(false));
-        proc3.on('close', (code) => resolve(code === 0));
-      });
-      proc2.on('close', (code) => resolve(code === 0));
-    });
-    proc.on('close', (code) => resolve(code === 0));
-  });
+  return getSpotdlExecutable() !== null;
 }
 
 // Helper: detect Spotify URL type
@@ -891,30 +902,32 @@ async function downloadInstagram(url, quality, res) {
 
 // Spotify download handler
 async function downloadSpotify(url, quality, res) {
-  const urlType = getSpotifyUrlType(url);
+  const cleanUrl = cleanSpotifyUrl(url);
+  const urlType = getSpotifyUrlType(cleanUrl) || getSpotifyUrlType(url);
   const isCollection = urlType === 'album' || urlType === 'playlist';
   const bitrate = (quality && quality.includes('128')) ? '128' : '320';
 
-  const spotdlAvailable = await hasSpotdl();
-  const ytDlpAvailable = await hasYtDlp();
+  const spotdlExec = getSpotdlExecutable();
+  const ytDlpAvailable = hasYtDlp();
 
   // Method 1: spotdl (best for Spotify)
-  if (spotdlAvailable) {
+  if (spotdlExec) {
     try {
       const tmpDir = path.join(os.tmpdir(), `spotify_${Date.now()}`);
       fs.mkdirSync(tmpDir, { recursive: true });
 
       await new Promise((resolve, reject) => {
         const args = [
-          'download', url,
+          ...spotdlExec.prefix,
+          'download', cleanUrl,
           '--output', path.join(tmpDir, '{title} - {artist}.{output-ext}'),
           '--format', 'mp3',
           '--bitrate', bitrate === '320' ? 'disable' : '128k',
           '--no-cache',
-          '--yt-dlp-args', '--extractor-args youtube:player_client=android,web'
+          '--yt-dlp-args', '--extractor-args=youtube:player_client=android,web'
         ];
-        console.log(`[Spotify] Downloading: ${url} (${bitrate}kbps)`);
-        const proc = spawn('spotdl', args, { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+        console.log(`[Spotify] Downloading: ${cleanUrl} (${bitrate}kbps) using ${spotdlExec.cmd}`);
+        const proc = spawn(spotdlExec.cmd, args, { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
         let stderr = '';
         proc.stdout.on('data', (data) => { 
           const msg = data.toString().trim();
@@ -925,40 +938,14 @@ async function downloadSpotify(url, quality, res) {
           stderr += msg + '\n';
           if (msg) console.error(`[Spotify Stderr] ${msg}`);
         });
-        proc.on('error', (err) => {
-          console.warn('[Spotify] spotdl binary error, trying python3 -m spotdl:', err.message);
-          const proc2 = spawn('python3', ['-m', 'spotdl', ...args], { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-          let stderr2 = '';
-          proc2.stdout.on('data', (data) => {
-            const msg = data.toString().trim();
-            if (msg) console.log(`[Spotify] ${msg}`);
-          });
-          proc2.stderr.on('data', (data) => {
-            const msg = data.toString().trim();
-            stderr2 += msg + '\n';
-            if (msg) console.error(`[Spotify Stderr] ${msg}`);
-          });
-          proc2.on('error', () => {
-            const proc3 = spawn('python', ['-m', 'spotdl', ...args], { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-            proc3.stdout.on('data', (d) => console.log(`[Spotify] ${d.toString().trim()}`));
-            proc3.stderr.on('data', (d) => console.error(`[Spotify Stderr] ${d.toString().trim()}`));
-            proc3.on('error', () => reject(new Error('spotdl not found')));
-            proc3.on('close', (code) => {
-              if (code === 0) resolve();
-              else reject(new Error(stderr2 || 'spotdl download failed'));
-            });
-          });
-          proc2.on('close', (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(stderr2 || 'spotdl download failed'));
-          });
-        });
+        proc.on('error', (err) => reject(new Error('spotdl execution error: ' + err.message)));
         proc.on('close', (code) => {
           if (code === 0) {
             console.log(`[Spotify] Download selesai!`);
             resolve();
+          } else {
+            reject(new Error(stderr || 'spotdl download failed'));
           }
-          else reject(new Error(stderr || 'spotdl download failed'));
         });
       });
 
