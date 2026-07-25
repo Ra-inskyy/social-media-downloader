@@ -39,6 +39,23 @@ function cleanSpotifyUrl(url) {
   return cleaned;
 }
 
+// Helper: recursively find audio files in a directory
+function findAudioFiles(dir) {
+  let results = [];
+  try {
+    const list = fs.readdirSync(dir, { withFileTypes: true });
+    for (const item of list) {
+      const fullPath = path.join(dir, item.name);
+      if (item.isDirectory()) {
+        results = results.concat(findAudioFiles(fullPath));
+      } else if (/\.(mp3|m4a|opus|flac|wav|ogg)$/i.test(item.name)) {
+        results.push(fullPath);
+      }
+    }
+  } catch (e) {}
+  return results;
+}
+
 // Helper: check if ffmpeg is available
 function hasFfmpeg() {
   try {
@@ -923,9 +940,10 @@ async function downloadSpotify(url, quality, res) {
       const args = [
         ...spotdlExec.prefix,
         'download', cleanUrl,
-        '--output', path.join(tmpDir, '{title} - {artist}.{output-ext}'),
+        '--output', '{title} - {artist}.{output-ext}',
         '--format', 'mp3',
         '--bitrate', bitrate === '320' ? 'disable' : '128k',
+        '--audio', 'youtube-music', 'youtube', 'soundcloud',
         '--no-cache'
       ];
       console.log(`[Spotify] Downloading: ${cleanUrl} (${bitrate}kbps) using ${spotdlExec.cmd} in ${tmpDir}`);
@@ -961,16 +979,21 @@ async function downloadSpotify(url, quality, res) {
       });
     });
 
-    // Find downloaded files
-    const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.mp3'));
-    if (files.length === 0) {
+    // Find downloaded files recursively in tmpDir
+    const audioFiles = findAudioFiles(tmpDir);
+    console.log(`[Spotify] Found ${audioFiles.length} audio file(s) in ${tmpDir}:`, audioFiles);
+
+    if (audioFiles.length === 0) {
+      const allFilesInTmp = fs.readdirSync(tmpDir);
+      console.error(`[Spotify Debug] All files in ${tmpDir}:`, allFilesInTmp);
       throw new Error('Lagu tidak ditemukan atau gagal diunduh dari YouTube/Spotify');
     }
 
-    if (files.length === 1 && !isCollection) {
+    if (audioFiles.length === 1 && !isCollection) {
       // Single track — stream directly
-      const filePath = path.join(tmpDir, files[0]);
-      const safeFilename = files[0].replace(/[^a-zA-Z0-9._\- ]/g, '_');
+      const filePath = audioFiles[0];
+      const fileName = path.basename(filePath);
+      const safeFilename = fileName.replace(/[^a-zA-Z0-9._\- ]/g, '_');
       res.header('Content-Disposition', `attachment; filename="${safeFilename}"`);
       res.header('Content-Type', 'audio/mpeg');
       const stream = fs.createReadStream(filePath);
@@ -987,8 +1010,8 @@ async function downloadSpotify(url, quality, res) {
       const archive = archiver('zip', { zlib: { level: 1 } });
       archive.pipe(res);
 
-      for (const file of files) {
-        archive.file(path.join(tmpDir, file), { name: file });
+      for (const filePath of audioFiles) {
+        archive.file(filePath, { name: path.basename(filePath) });
       }
 
       archive.on('end', () => {
