@@ -986,7 +986,7 @@ async function downloadSpotify(url, quality, res) {
         res.header('Content-Disposition', `attachment; filename="${zipFilename}"`);
         res.header('Content-Type', 'application/zip');
 
-        const archive = new archiver.ZipArchive({ zlib: { level: 1 } }); // Fast compression
+        const archive = archiver('zip', { zlib: { level: 1 } }); // Fast compression
         archive.pipe(res);
 
         for (const file of files) {
