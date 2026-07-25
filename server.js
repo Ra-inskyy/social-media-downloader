@@ -908,130 +908,101 @@ async function downloadSpotify(url, quality, res) {
   const bitrate = (quality && quality.includes('128')) ? '128' : '320';
 
   const spotdlExec = getSpotdlExecutable();
-  const ytDlpAvailable = hasYtDlp();
 
-  // Method 1: spotdl (best for Spotify)
-  if (spotdlExec) {
-    try {
-      const tmpDir = path.join(os.tmpdir(), `spotify_${Date.now()}`);
-      fs.mkdirSync(tmpDir, { recursive: true });
-
-      await new Promise((resolve, reject) => {
-        const args = [
-          ...spotdlExec.prefix,
-          'download', cleanUrl,
-          '--output', path.join(tmpDir, '{title} - {artist}.{output-ext}'),
-          '--format', 'mp3',
-          '--bitrate', bitrate === '320' ? 'disable' : '128k',
-          '--no-cache',
-          '--yt-dlp-args', '--extractor-args=youtube:player_client=android,web'
-        ];
-        console.log(`[Spotify] Downloading: ${cleanUrl} (${bitrate}kbps) using ${spotdlExec.cmd}`);
-        const proc = spawn(spotdlExec.cmd, args, { env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-        let stderr = '';
-        proc.stdout.on('data', (data) => { 
-          const msg = data.toString().trim();
-          if (msg) console.log(`[Spotify] ${msg}`);
-        });
-        proc.stderr.on('data', (data) => { 
-          const msg = data.toString().trim();
-          stderr += msg + '\n';
-          if (msg) console.error(`[Spotify Stderr] ${msg}`);
-        });
-        proc.on('error', (err) => reject(new Error('spotdl execution error: ' + err.message)));
-        proc.on('close', (code) => {
-          if (code === 0) {
-            console.log(`[Spotify] Download selesai!`);
-            resolve();
-          } else {
-            reject(new Error(stderr || 'spotdl download failed'));
-          }
-        });
-      });
-
-      // Find downloaded files
-      const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.mp3'));
-      if (files.length === 0) {
-        throw new Error('No MP3 files were downloaded');
-      }
-
-      if (files.length === 1 && !isCollection) {
-        // Single track — stream directly
-        const filePath = path.join(tmpDir, files[0]);
-        const safeFilename = files[0].replace(/[^a-zA-Z0-9._\- ]/g, '_');
-        res.header('Content-Disposition', `attachment; filename="${safeFilename}"`);
-        res.header('Content-Type', 'audio/mpeg');
-        const stream = fs.createReadStream(filePath);
-        stream.pipe(res);
-        stream.on('end', () => {
-          // Cleanup
-          fs.rm(tmpDir, { recursive: true, force: true }, () => {});
-        });
-      } else {
-        // Multiple tracks — zip them
-        const zipFilename = `spotify_${urlType}_${Date.now()}.zip`;
-        res.header('Content-Disposition', `attachment; filename="${zipFilename}"`);
-        res.header('Content-Type', 'application/zip');
-
-        const archive = archiver('zip', { zlib: { level: 1 } }); // Fast compression
-        archive.pipe(res);
-
-        for (const file of files) {
-          archive.file(path.join(tmpDir, file), { name: file });
-        }
-
-        archive.on('end', () => {
-          fs.rm(tmpDir, { recursive: true, force: true }, () => {});
-        });
-
-        archive.finalize();
-      }
-      return;
-    } catch (e) {
-      console.error('spotdl download failed:', e.message);
-      // Fall through to yt-dlp
-    }
-  }
-
-  // Method 2: yt-dlp fallback (works for some Spotify URLs)
-  if (ytDlpAvailable) {
-    try {
-      const tmpDir = os.tmpdir();
-      const timestamp = Date.now();
-      const audioPath = path.join(tmpDir, `spotify_${timestamp}.mp3`);
-
-      await new Promise((resolve, reject) => {
-        const proc = spawn('yt-dlp', [
-          '-f', 'bestaudio',
-          '--extract-audio', '--audio-format', 'mp3',
-          '--audio-quality', bitrate === '320' ? '0' : '5',
-          '-o', audioPath, '--no-playlist', url
-        ]);
-        let stderr = '';
-        proc.stderr.on('data', (data) => { stderr += data; });
-        proc.on('error', reject);
-        proc.on('close', (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(stderr || 'yt-dlp spotify download failed'));
-        });
-      });
-
-      res.header('Content-Disposition', 'attachment; filename="spotify_audio.mp3"');
-      res.header('Content-Type', 'audio/mpeg');
-      const stream = fs.createReadStream(audioPath);
-      stream.pipe(res);
-      stream.on('end', () => fs.unlink(audioPath, () => {}));
-      return;
-    } catch (e) {
-      console.error('yt-dlp spotify failed:', e.message);
-    }
-  }
-
-  // No tools available
-  if (!res.headersSent) {
-    res.status(500).json({
-      error: 'Download Spotify memerlukan spotdl atau yt-dlp. Install: pip install spotdl'
+  if (!spotdlExec) {
+    return res.status(500).json({
+      error: 'Download Spotify memerlukan spotdl. Pastikan spotdl terinstall di server.'
     });
+  }
+
+  try {
+    const tmpDir = path.join(os.tmpdir(), `spotify_${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    await new Promise((resolve, reject) => {
+      const args = [
+        ...spotdlExec.prefix,
+        'download', cleanUrl,
+        '--output', path.join(tmpDir, '{title} - {artist}.{output-ext}'),
+        '--format', 'mp3',
+        '--bitrate', bitrate === '320' ? 'disable' : '128k',
+        '--no-cache'
+      ];
+      console.log(`[Spotify] Downloading: ${cleanUrl} (${bitrate}kbps) using ${spotdlExec.cmd} in ${tmpDir}`);
+      
+      const proc = spawn(spotdlExec.cmd, args, { 
+        cwd: tmpDir,
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', HOME: tmpDir } 
+      });
+      
+      let stderr = '';
+      let lastLog = '';
+
+      proc.stdout.on('data', (data) => { 
+        const msg = data.toString().trim();
+        if (msg) {
+          lastLog = msg;
+          console.log(`[Spotify] ${msg}`);
+        }
+      });
+      proc.stderr.on('data', (data) => { 
+        const msg = data.toString().trim();
+        stderr += msg + '\n';
+        if (msg) console.error(`[Spotify Stderr] ${msg}`);
+      });
+      proc.on('error', (err) => reject(new Error('Gagal menjalankan spotdl: ' + err.message)));
+      proc.on('close', (code) => {
+        if (code === 0) {
+          console.log(`[Spotify] Download selesai!`);
+          resolve();
+        } else {
+          reject(new Error(stderr.trim() || lastLog || 'Gagal mengunduh audio dari Spotify'));
+        }
+      });
+    });
+
+    // Find downloaded files
+    const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.mp3'));
+    if (files.length === 0) {
+      throw new Error('Lagu tidak ditemukan atau gagal diunduh dari YouTube/Spotify');
+    }
+
+    if (files.length === 1 && !isCollection) {
+      // Single track — stream directly
+      const filePath = path.join(tmpDir, files[0]);
+      const safeFilename = files[0].replace(/[^a-zA-Z0-9._\- ]/g, '_');
+      res.header('Content-Disposition', `attachment; filename="${safeFilename}"`);
+      res.header('Content-Type', 'audio/mpeg');
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
+      stream.on('end', () => {
+        fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+      });
+    } else {
+      // Multiple tracks — zip them
+      const zipFilename = `spotify_${urlType}_${Date.now()}.zip`;
+      res.header('Content-Disposition', `attachment; filename="${zipFilename}"`);
+      res.header('Content-Type', 'application/zip');
+
+      const archive = archiver('zip', { zlib: { level: 1 } });
+      archive.pipe(res);
+
+      for (const file of files) {
+        archive.file(path.join(tmpDir, file), { name: file });
+      }
+
+      archive.on('end', () => {
+        fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+      });
+
+      archive.finalize();
+    }
+    return;
+  } catch (e) {
+    console.error('[Spotify Error]', e.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: e.message || 'Gagal mendownload audio Spotify' });
+    }
   }
 }
 
