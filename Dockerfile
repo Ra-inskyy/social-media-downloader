@@ -1,5 +1,5 @@
-# Base image Node.js LTS
-FROM node:18-bullseye-slim
+# Base image Node.js 20 LTS with Debian 12 (Bookworm) for Python 3.11+
+FROM node:20-bookworm-slim
 
 # Install Python3, Pip, python-is-python3, FFmpeg, build tools, and networking tools
 RUN apt-get update && apt-get install -y \
